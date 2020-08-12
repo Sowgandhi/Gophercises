@@ -9,7 +9,7 @@ import (
 	"unicode"
 )
 
-// Complete the camelcase function below.
+
 func camelcase(s string) int {
 	//n:= len(s)
 	count := 1
