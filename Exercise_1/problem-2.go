@@ -6,50 +6,27 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-/*used to switch between goroutines*/
-type globalVariable struct {
-	set bool
-}
-
-var instance globalVariable
-
-func checkPath(path string) string {
-	_, file := filepath.Split(path)
-	if file != "problems.csv" {
-		path = filepath.Join(path, "problems.csv")
-	}
-	return path
-}
-
 func main() {
 
-	instance.set = false
-	var path string
-	fmt.Printf("Enter the path to the csv file:")
-	fmt.Scan(&path)
-	path = checkPath(path)
-	pathptr := flag.String("Path", path, "Path to the csv file")
+	filenameptr := flag.String("FileName", "problems.csv", "the path to the csv file")
+	limit := flag.Int("duration", 30, "Default duration of the quiz")
 	flag.Parse()
-	file, err := os.Open(*pathptr)
+	file, err := os.Open(*filenameptr)
 	if err != nil {
 		fmt.Printf("The file cannot be opened %s\n", err)
 		os.Exit(1)
 	}
 	record := csv.NewReader(file)
-	limit := flag.Float64("duration", 30, "Default duration of the quiz")
-	flag.Parse()
+
 	count := 0
 	total := 0
-	now := time.Now()
+	complete := make(chan int)
+	go waiting(complete, *limit)
 
 	for {
-		instance.set = false
-		go waiting(now, *limit, count, total)
-		var ans string
 		lines, err := record.Read()
 		if err == io.EOF {
 			break
@@ -59,22 +36,28 @@ func main() {
 		}
 		fmt.Printf("Question: %s Answer:?\n", lines[0])
 		total++
-		fmt.Scan(&ans)
-		instance.set = true
-		if ans == lines[1] {
-			count++
+		answerchan := make(chan string)
+		go ans(answerchan)
+
+		select {
+		case <-complete:
+			fmt.Printf("You scored %d out of %d questions\n", count, total)
+			os.Exit(1)
+		case answer := <-answerchan:
+			if answer == lines[1] {
+				count++
+			}
+
 		}
 
 	}
-	fmt.Printf("You scored %d out of %d questions", count, total)
 }
-func waiting(then time.Time, limit float64, count int, total int) {
-	for instance.set != true {
-		now := time.Now()
-		if int(now.Sub(then).Seconds()) >= int(limit) {
-			fmt.Printf("Time Up!\n")
-			fmt.Printf("You scored %d out of %d questions\n", count, total+1)
-			os.Exit(1)
-		}
-	}
+func ans(answerchan chan string) {
+	var answer string
+	fmt.Scan(&answer)
+	answerchan <- answer
+}
+func waiting(complete chan int, limit int) {
+	time.Sleep(time.Duration(limit) * time.Second)
+	complete <- 1
 }
